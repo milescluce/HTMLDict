@@ -3,16 +3,17 @@ from pathlib import Path
 import pandas as pd
 from loguru import logger as log
 from jinja2 import Environment, FileSystemLoader
+from p2d2.database import TableProxy, Database
 
 CWD = Path(__file__).parent
 TEMPLATES = CWD / "templates"
 TEMPLATER = Environment(loader=FileSystemLoader(TEMPLATES))
+REPR = "[HTMLDict]"
 
 class HTMLDict(dict):
+    from p2d2 import Database
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-
-        # Check annotations for reserved names
         annotations = getattr(self.__class__, '__annotations__', {})
         for anno in annotations:
             if anno in ["card", "detail", "label", "export", "from_pandas_row"]:
@@ -21,7 +22,6 @@ class HTMLDict(dict):
         log.debug(f"Initialized HTMLDict with keys: {list(self.keys())}")
 
     def __getattribute__(self, item):
-        # Avoid infinite recursion by using object.__getattribute__ for class attributes
         try:
             annotations = object.__getattribute__(self, '__class__').__annotations__
 
@@ -50,7 +50,7 @@ class HTMLDict(dict):
             if var_name in self:
                 var_value = str(self[var_name])
                 result = result.replace(f"${{{var_name}}}", var_value)
-                log.debug(f"Substituted ${{{var_name}}} with '{var_value}'")
+                log.debug(f"{self.__class__.__name__}: Substituted ${{{var_name}}} with '{var_value}'")
             else: raise KeyError(f"Attempted to declare variable '{var_name}' with no reference!")
 
         return result
@@ -70,14 +70,14 @@ class HTMLDict(dict):
                 # If the class value is a string that matches a key in self, use that value
                 if isinstance(class_value, str) and class_value in self:
                     exported[key] = self[class_value]
-                    log.debug(f"Exported {key} = '{self[class_value]}'")
+                    log.debug(f"{self.__class__.__name__}: Exported {key} = '{self[class_value]}'")
                 else:
                     # Apply variable substitution only to _redirect_uri
                     if key == "_redirect_uri":
                         substituted_value = self._substitute_variables(class_value)
                         exported[key] = substituted_value
                         if substituted_value != class_value:
-                            log.debug(f"Exported {key} with substitution: '{class_value}' -> '{substituted_value}'")
+                            log.debug(f"{self.__class__.__name__}: Exported {key} with substitution: '{class_value}' -> '{substituted_value}'")
                     else:
                         exported[key] = class_value
 
@@ -101,7 +101,6 @@ class HTMLDict(dict):
     @classmethod
     def from_pandas_row(cls, row):
         """Create HTMLDict instance from pandas Series (DataFrame row)"""
-        # Convert pandas Series to dict, handling NaN values
         data = {}
         for key, value in row.items():
             if pd.isna(value):
@@ -111,16 +110,36 @@ class HTMLDict(dict):
 
         return cls(**data)
 
+    def commit_to_database(self, database: Database, table: str = None, signature = None):
+        if not table:
+            table = str(self.__class__.__name__).lower()
+            log.debug(f"{REPR}: Using class name '{table}' for committing to database.")
+        if table in database.tables:
+            df = getattr(database, table, None)
+            log.debug(f"{REPR}: Found '{table}' in {database}")
+            with database.table(df) as t:
+                t: TableProxy
+                t.create(signature=signature, **self)
+        else:
+            log.warning(f"{REPR}: Table '{table}' not found, could not commit!")
+
 class Dummy(HTMLDict):
     _title = "foo"
     _subtitle = "bar"
     _redirect_uri = "http://${url}"
+    _unique_keys = ["foo"]
     foo: str
     bar: str
     url: str
+
+class DB(Database):
+    dummy: Dummy
 
 if __name__ == "__main__":
     d = Dummy(foo="foo", bar="bar", url="example.com")
     p = Path("test.html")
     p.touch(exist_ok=True)
     p.write_text(d.label)
+
+    db = DB("test_database")
+    d.commit_to_database(db)
