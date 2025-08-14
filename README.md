@@ -3,8 +3,8 @@ A lightweight Python class that extends dict to generate HTML templates and inte
 ### Usage
 
 ```python
-from pathlib import Path
-from core import HTMLDict, Database
+from htmldict import HTMLDict
+from p2d2 import Database
 
 class Person(HTMLDict):
     _title = "name"
