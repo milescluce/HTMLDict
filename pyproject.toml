@@ -1,6 +1,6 @@
 [project]
 name = "htmldict"
-version = "0.1.0"
+version = "0.1.1"
 description = "Python dict objects with the ability to serve html"
 authors = [
     {name = "Miles Copeland Luce"}

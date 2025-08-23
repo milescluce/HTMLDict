@@ -3,7 +3,7 @@ from pathlib import Path
 import pandas as pd
 from loguru import logger as log
 from jinja2 import Environment, FileSystemLoader
-from p2d2.database import TableProxy, Database
+from p2d2.database import Database
 
 CWD = Path(__file__).parent
 TEMPLATES = CWD / "templates"
@@ -117,9 +117,7 @@ class HTMLDict(dict):
         if table in database.tables:
             df = getattr(database, table, None)
             log.debug(f"{REPR}: Found '{table}' in {database}")
-            with database.table(df) as t:
-                t: TableProxy
-                t.create(signature=signature, **self)
+            database.create(table_name=table, signature=signature, **self)
         else:
             log.warning(f"{REPR}: Table '{table}' not found, could not commit!")
 
